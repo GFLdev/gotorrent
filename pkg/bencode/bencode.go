@@ -11,21 +11,43 @@ import (
 	"strconv"
 )
 
+// Decoded result linked list node
+type DecodedCodeNode[T any] struct {
+	Val        T
+	Next, Tail *DecodedCodeNode[T]
+}
+
+// Push value to the end of the decoded list
+func (node *DecodedCodeNode[T]) Push(val T) {
+	tail := node.Tail
+
+	if tail == nil {
+		node.Val = val
+		tail = node
+	} else {
+		tail.Next = &DecodedCodeNode[T]{
+			Val: val,
+		}
+		node.Tail = tail.Next
+	}
+}
+
 // Decode bencode to integer
 func decodeInt(bCode *string) (int, int, error) {
 	bLen := len(*bCode)
 
 	// Finding "e" index
 	var index int
-	for i := 0; i < bLen-1; i++ {
-		index = i
-		if (*bCode)[i] == 'e' {
+	for i := 0; i < bLen; i++ {
+		curr := string((*bCode)[i])
+		if curr == "e" {
+			index = i
 			break
 		}
 	}
 
 	// Remove "i" and "e" from string
-	intStr := (*bCode)[1 : index-1]
+	intStr := (*bCode)[1:index]
 
 	// Try to convert string to integer
 	res, err := strconv.Atoi(intStr)
@@ -49,12 +71,12 @@ func decodeString(bCode *string) (string, int, error) {
 		strLen += string((*bCode)[i])
 	}
 
-	len, err := strconv.Atoi(strLen)
+	intLen, err := strconv.Atoi(strLen)
 	if err != nil {
 		panic("Could not parse string length")
 	}
 
-	index := start + len
+	index := start + intLen
 	return (*bCode)[start:index], index, nil
 }
 
@@ -81,12 +103,12 @@ func decodeList(bCode *string) (string, int, error) {
 	intStr := (*bCode)[1 : index-1]
 
 	// Try to convert string to integer
-	res, err := strconv.Atoi(intStr)
-	if err != nil {
-		panic("Invalid bencode")
-	}
+	// res, err := strconv.Atoi(intStr)
+	// if err != nil {
+	// 	panic("Invalid bencode")
+	// }
 
-	return string(res), index, nil
+	return string(intStr), index, nil
 }
 
 // Decode bencode to dictionary -> tree
@@ -96,57 +118,71 @@ func decodeDict(bCode *string) (string, int, error) {
 }
 
 // Decode bencode string
-func Decode(bCode string) (string, error) {
-	fChar := bCode[0]
-	bLen := len(bCode)
-	res := ""
+func Decode(bCode *string) (*DecodedCodeNode[any], error) {
+	bLen := len(*bCode)
+	res := &DecodedCodeNode[any]{}
 
 	for i := 0; i < bLen; i++ {
-		if fChar == 'i' {
-			temp, end, err := decodeInt(&bCode)
+		fChar := string((*bCode)[i])
+		remain := (*bCode)[i:bLen]
+
+		fmt.Println(fChar)
+		fmt.Println(remain)
+
+		switch fChar {
+		case "i":
+			temp, end, err := decodeInt(&remain)
 			if err != nil {
 				panic(fmt.Sprintf("[Decoding Error] %v\n", err))
 			}
 
 			i = end
-			res += string(temp) + "\n"
-		} else if fChar == 'l' {
-			res, end, err := decodeList(&bCode)
+			res.Push(temp)
+			continue
+		case "l":
+			temp, end, err := decodeInt(&remain)
 			if err != nil {
 				panic(fmt.Sprintf("[Decoding Error] %v\n", err))
 			}
 
 			i = end
-			res += string(res) + "\n"
-		} else if fChar == 'd' {
-			temp, end, err := decodeDict(&bCode)
+			res.Push(temp)
+			continue
+		case "d":
+			temp, end, err := decodeDict(&remain)
 			if err != nil {
 				panic(fmt.Sprintf("[Decoding Error] %v\n", err))
 			}
 
 			i = end
-			res += string(temp) + "\n"
-		} else if _, err := strconv.Atoi(string(fChar)); err == nil {
-			for j := 0; j < bLen; j++ {
-				_, err := strconv.Atoi(string(bCode[i]))
+			res.Push(temp)
+			continue
+		default:
+			if _, err := strconv.Atoi(fChar); err == nil {
+				for j := i; j < bLen; j++ {
+					curr := string((*bCode)[j])
 
-				if bCode[j] == ':' && err == nil {
-					temp, end, err := decodeString(&bCode)
-					if err != nil {
+					if curr == ":" {
+						temp, end, err := decodeString(&remain)
+						if err != nil {
+							panic("[Decode error] Invalid bencode")
+						}
+
+						i = end
+						res.Push(temp)
+						break
+					} else if _, err := strconv.Atoi(curr); err == nil {
+						continue
+					} else {
 						panic("[Decode error] Invalid bencode")
 					}
-
-					i = end
-					res = string(temp) + "\n"
-					continue
-				} else {
-					panic("[Decode error] Invalid bencode")
 				}
+			} else {
+				panic("[Decode error] Invalid bencode")
 			}
-		} else {
-			panic("[Decode error] Invalid bencode")
+			break
 		}
 	}
 
-	panic("[Decode error] Invalid bencode")
+	return res, nil
 }

@@ -15,6 +15,9 @@ import (
 
 func main() {
 	bCode := os.Args[1]
-
-	fmt.Print(bencode.Decode(&bCode))
+	res, _ := bencode.Decode(&bCode)
+	for res != nil {
+		fmt.Println(res.Val)
+		res = res.Next
+	}
 }
